@@ -1,52 +1,96 @@
 pub const NAME: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("VERSION");
 
-pub struct Repl;
+pub struct Repl<Ctx> {
+    _grps: Vec<Group<Ctx>>,
+    _cmds: Vec<Command<Ctx>>,
+}
 
-impl Repl {
-    pub fn builder() -> ReplBuilder {
-        ReplBuilder
+impl<Ctx> Repl<Ctx> {
+    pub fn builder() -> ReplBuilder<Ctx> {
+        ReplBuilder::<Ctx> {
+            grps: Vec::new(),
+            cmds: Vec::new(),
+        }
     }
 
     pub fn run(&self) {}
 }
 
-pub struct ReplBuilder;
+#[derive(Default)]
+pub struct ReplBuilder<Ctx> {
+    grps: Vec<Group<Ctx>>,
+    cmds: Vec<Command<Ctx>>,
+}
 
-impl ReplBuilder {
-    pub fn with_command(self, _cmd: Command) -> ReplBuilder {
+impl<Ctx> ReplBuilder<Ctx> {
+    pub fn with_group(self, _grp: Group<Ctx>) -> ReplBuilder<Ctx> {
         self
     }
 
-    pub fn with_group(self, _grp: Group) -> ReplBuilder {
+    pub fn with_command(self, _cmd: Command<Ctx>) -> ReplBuilder<Ctx> {
         self
     }
 
-    pub fn build(self) -> Repl {
-        Repl
+    pub fn build(self) -> Repl<Ctx> {
+        Repl::<Ctx> {
+            _grps: self.grps,
+            _cmds: self.cmds,
+        }
     }
 }
 
-pub struct Command {
+pub struct Group<Ctx> {
     _name: String,
+    cmds: Vec<Command<Ctx>>,
 }
 
-impl Command {
+impl<Ctx> Group<Ctx> {
     pub fn new(name: &str) -> Self {
-        Self { _name: name.into() }
-    }
-}
-
-pub struct Group {
-    _name: String,
-}
-
-impl Group {
-    pub fn new(name: &str) -> Self {
-        Self { _name: name.into() }
+        Self {
+            _name: name.into(),
+            cmds: Vec::new(),
+        }
     }
 
-    pub fn with_command(self, _cmd: Command) -> Self {
+    pub fn with_command(mut self, cmd: Command<Ctx>) -> Self {
+        self.cmds.push(cmd);
         self
     }
 }
+
+pub struct Command<Ctx> {
+    _name: String,
+    params: Vec<Parameter>,
+    _cb: Box<dyn FnOnce(Ctx, Args)>,
+}
+
+impl<Ctx> Command<Ctx> {
+    pub fn new<Cb>(name: &str, cb: Cb) -> Self
+    where
+        Cb: FnOnce(Ctx, Args) + 'static,
+    {
+        Self {
+            _name: name.into(),
+            params: Vec::new(),
+            _cb: Box::new(cb),
+        }
+    }
+
+    pub fn with_parameter(mut self, param: Parameter) -> Self {
+        self.params.push(param);
+        self
+    }
+}
+
+pub enum Parameter {
+    String(String),
+}
+
+impl Parameter {
+    pub fn string(name: &str) -> Self {
+        Self::String(name.into())
+    }
+}
+
+pub struct Args;
