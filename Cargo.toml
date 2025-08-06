@@ -4,4 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rustyline = { version = "17.0.0", default-features = false }
+log = "0.4"
+rustyline = { version = "17.0", default-features = false }

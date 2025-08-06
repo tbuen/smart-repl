@@ -1,7 +1,12 @@
+use readline::Reader;
+
+mod readline;
+
 pub const NAME: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("VERSION");
 
 pub struct Repl<Ctx> {
+    reader: Reader,
     _grps: Vec<Group<Ctx>>,
     _cmds: Vec<Command<Ctx>>,
 }
@@ -14,7 +19,28 @@ impl<Ctx> Repl<Ctx> {
         }
     }
 
-    pub fn run(&self) {}
+    pub fn run(&mut self) {
+        loop {
+            match self.reader.read_line() {
+                Ok(_list) => {
+                    println!("Line read");
+                }
+                /*
+                match self.rl.helper().unwrap().parse(&line) {
+                    Ok(res) => {
+                        if self.interpret(res) {
+                            match self.rl.add_history_entry(line) {
+                                Ok(b) => println!("history: {b}"),
+                                Err(e) => println!("{:?}", e),
+                            }
+                        }
+                    }
+                    Err(_) => println!("## invalid input"),
+                },*/
+                Err(_) => break,
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -34,6 +60,7 @@ impl<Ctx> ReplBuilder<Ctx> {
 
     pub fn build(self) -> Repl<Ctx> {
         Repl::<Ctx> {
+            reader: Reader::new(),
             _grps: self.grps,
             _cmds: self.cmds,
         }
