@@ -52,7 +52,7 @@ impl Reader {
                 Err(())
             }
             Err(err) => {
-                error!("{:?}", err);
+                error!("{err:?}");
                 Err(())
             }
         }

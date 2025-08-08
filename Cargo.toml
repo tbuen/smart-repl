@@ -6,3 +6,6 @@ edition = "2024"
 [dependencies]
 log = "0.4"
 rustyline = { version = "17.0", default-features = false }
+
+#[lints.clippy]
+#pedantic = "warn"

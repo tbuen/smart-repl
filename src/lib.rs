@@ -21,10 +21,11 @@ impl<Ctx> Repl<Ctx> {
 
     pub fn run(&mut self) {
         loop {
-            match self.reader.read_line() {
-                Ok(_list) => {
-                    println!("Line read");
-                }
+            while let Ok(_list) = self.reader.read_line() {
+                //match self.reader.read_line() {
+                //    Ok(_list) => {
+                println!("Line read");
+                //    }
                 /*
                 match self.rl.helper().unwrap().parse(&line) {
                     Ok(res) => {
@@ -37,13 +38,12 @@ impl<Ctx> Repl<Ctx> {
                     }
                     Err(_) => println!("## invalid input"),
                 },*/
-                Err(_) => break,
+                //Err(_) => break,
             }
         }
     }
 }
 
-#[derive(Default)]
 pub struct ReplBuilder<Ctx> {
     grps: Vec<Group<Ctx>>,
     cmds: Vec<Command<Ctx>>,

@@ -34,7 +34,7 @@ impl Tokenizer {
                     if c == '"' || c == '\'' {
                         return Err(());
                     } else if c == ' ' {
-                        tokens.push_back(Token::new(&token, begin, i));
+                        tokens.push_back(Token::plain(&token, begin, i));
                         token.clear();
                         status = Status::Idle;
                     } else {
@@ -53,7 +53,7 @@ impl Tokenizer {
             }
         }
         match status {
-            Status::Token => tokens.push_back(Token::new(&token, begin, line.chars().count())),
+            Status::Token => tokens.push_back(Token::plain(&token, begin, line.chars().count())),
             Status::Quote(_) => return Err(()),
             _ => {}
         }
@@ -75,7 +75,7 @@ struct Token {
 }
 
 impl Token {
-    fn new(text: &str, begin: usize, end: usize) -> Self {
+    fn plain(text: &str, begin: usize, end: usize) -> Self {
         Self {
             text: text.into(),
             begin,
@@ -98,96 +98,110 @@ impl Token {
 mod test {
     use super::*;
 
+    impl<const N: usize> From<[Token; N]> for TokenList {
+        fn from(s: [Token; N]) -> Self {
+            TokenList { tokens: s.into() }
+        }
+    }
+
     #[test]
-    fn test_tokenize() {
+    fn test_simple() {
+        let t = Tokenizer::new();
+        assert_eq!(t.tokenize("a"), Ok([Token::plain("a", 0, 1)].into()));
+        assert_eq!(
+            t.tokenize("abcde"),
+            Ok([Token::plain("abcde", 0, 5)].into())
+        );
+        assert_eq!(
+            t.tokenize("abcde fghij"),
+            Ok([Token::plain("abcde", 0, 5), Token::plain("fghij", 6, 11)].into())
+        );
+        assert_eq!(
+            t.tokenize("123 abcde fghij"),
+            Ok([
+                Token::plain("123", 0, 3),
+                Token::plain("abcde", 4, 9),
+                Token::plain("fghij", 10, 15)
+            ]
+            .into())
+        );
+    }
+
+    #[test]
+    fn test_whitespace() {
         let t = Tokenizer::new();
         assert_eq!(
-            t.tokenize("a"),
-            Ok(TokenList::from([Token::new("a", 0, 1)]))
-        );
-        assert_eq!(
             t.tokenize("    a    b    "),
-            Ok(TokenList::from([
-                Token::new("a", 4, 5),
-                Token::new("b", 9, 10)
-            ]))
+            Ok([Token::plain("a", 4, 5), Token::plain("b", 9, 10)].into())
         );
         assert_eq!(
-            t.tokenize("hello"),
-            Ok(TokenList::from([Token::new("hello", 0, 5)]))
+            t.tokenize("  abcde  "),
+            Ok([Token::plain("abcde", 2, 7)].into())
         );
         assert_eq!(
-            t.tokenize("  hello  "),
-            Ok(TokenList::from([Token::new("hello", 2, 7)]))
+            t.tokenize("abcde  fghij"),
+            Ok([Token::plain("abcde", 0, 5), Token::plain("fghij", 7, 12)].into())
         );
         assert_eq!(
-            t.tokenize("hello world"),
-            Ok(TokenList::from([
-                Token::new("hello", 0, 5),
-                Token::new("world", 6, 11)
-            ]))
+            t.tokenize(" abcde fghij "),
+            Ok([Token::plain("abcde", 1, 6), Token::plain("fghij", 7, 12)].into())
+        );
+    }
+
+    #[test]
+    fn test_quoting() {
+        let t = Tokenizer::new();
+        assert_eq!(
+            t.tokenize("say \"abcde fghij\""),
+            Ok([
+                Token::plain("say", 0, 3),
+                Token::quoted("abcde fghij", 5, 16)
+            ]
+            .into())
         );
         assert_eq!(
-            t.tokenize("hello  world"),
-            Ok(TokenList::from([
-                Token::new("hello", 0, 5),
-                Token::new("world", 7, 12)
-            ]))
+            t.tokenize("  say 'abcde  fghij'  "),
+            Ok([
+                Token::plain("say", 2, 5),
+                Token::quoted("abcde  fghij", 7, 19)
+            ]
+            .into())
         );
         assert_eq!(
-            t.tokenize(" hello world "),
-            Ok(TokenList::from([
-                Token::new("hello", 1, 6),
-                Token::new("world", 7, 12)
-            ]))
-        );
-        assert_eq!(
-            t.tokenize("say hello world"),
-            Ok(TokenList::from([
-                Token::new("say", 0, 3),
-                Token::new("hello", 4, 9),
-                Token::new("world", 10, 15)
-            ]))
-        );
-        assert_eq!(
-            t.tokenize("say \"hello world\""),
-            Ok(TokenList::from([
-                Token::new("say", 0, 3),
-                Token::quoted("hello world", 5, 16)
-            ]))
-        );
-        assert_eq!(
-            t.tokenize("  say \"hello world\"  "),
-            Ok(TokenList::from([
-                Token::new("say", 2, 5),
-                Token::quoted("hello world", 7, 18)
-            ]))
-        );
-        assert_eq!(
-            t.tokenize("say \"hello world\" twice"),
-            Ok(TokenList::from([
-                Token::new("say", 0, 3),
-                Token::quoted("hello world", 5, 16),
-                Token::new("twice", 18, 23)
-            ]))
+            t.tokenize("say 'abcde fghij ' twice"),
+            Ok([
+                Token::plain("say", 0, 3),
+                Token::quoted("abcde fghij ", 5, 17),
+                Token::plain("twice", 19, 24)
+            ]
+            .into())
         );
         assert_eq!(
             t.tokenize("say \"nothing\" twice"),
-            Ok(TokenList::from([
-                Token::new("say", 0, 3),
+            Ok([
+                Token::plain("say", 0, 3),
                 Token::quoted("nothing", 5, 12),
-                Token::new("twice", 14, 19)
-            ]))
+                Token::plain("twice", 14, 19)
+            ]
+            .into())
         );
         assert_eq!(
-            t.tokenize("say \"\" twice"),
-            Ok(TokenList::from([
-                Token::new("say", 0, 3),
+            t.tokenize("say '' twice"),
+            Ok([
+                Token::plain("say", 0, 3),
                 Token::quoted("", 5, 5),
-                Token::new("twice", 7, 12)
-            ]))
+                Token::plain("twice", 7, 12)
+            ]
+            .into())
         );
-        assert_eq!(t.tokenize("hello 'world"), Err(()));
-        assert_eq!(t.tokenize("hello'world  "), Err(()));
+    }
+
+    #[test]
+    fn test_invalid() {
+        let t = Tokenizer::new();
+        assert_eq!(t.tokenize("abcde 'fghij"), Err(()));
+        assert_eq!(t.tokenize("abcde' fghij"), Err(()));
+        assert_eq!(t.tokenize("abcde'fghij "), Err(()));
+        assert_eq!(t.tokenize("abcde'fghij\""), Err(()));
     }
 }
