@@ -1,5 +1,7 @@
-use readline::Reader;
+use log::trace;
+use readline::{ReadError, Reader};
 
+mod parser;
 mod readline;
 
 pub const NAME: &str = env!("CARGO_PKG_NAME");
@@ -7,25 +9,22 @@ pub const VERSION: &str = env!("VERSION");
 
 pub struct Repl<Ctx> {
     reader: Reader,
-    _grps: Vec<Group<Ctx>>,
-    _cmds: Vec<Command<Ctx>>,
+    cmds: Vec<Command<Ctx>>,
+    grps: Vec<Group<Ctx>>,
 }
 
 impl<Ctx> Repl<Ctx> {
     pub fn builder() -> ReplBuilder<Ctx> {
-        ReplBuilder::<Ctx> {
-            grps: Vec::new(),
-            cmds: Vec::new(),
-        }
+        ReplBuilder::new()
     }
 
     pub fn run(&mut self) {
         loop {
-            while let Ok(_list) = self.reader.read_line() {
-                //match self.reader.read_line() {
-                //    Ok(_list) => {
-                println!("Line read");
-                //    }
+            match self.reader.read_line() {
+                Ok(tokens) => {
+                    trace!("{tokens:?}");
+                    parser::parse(&self.cmds, &self.grps, &tokens);
+                }
                 /*
                 match self.rl.helper().unwrap().parse(&line) {
                     Ok(res) => {
@@ -38,44 +37,67 @@ impl<Ctx> Repl<Ctx> {
                     }
                     Err(_) => println!("## invalid input"),
                 },*/
-                //Err(_) => break,
+                Err(ReadError::InvalidInput) => println!("Invalid input"),
+                Err(ReadError::Io(e)) => {
+                    eprintln!("{e}");
+                    break;
+                }
+                Err(ReadError::Eof) | Err(ReadError::Interrupted) => break,
             }
         }
     }
 }
 
 pub struct ReplBuilder<Ctx> {
-    grps: Vec<Group<Ctx>>,
+    prompt: String,
     cmds: Vec<Command<Ctx>>,
+    grps: Vec<Group<Ctx>>,
 }
 
 impl<Ctx> ReplBuilder<Ctx> {
-    pub fn with_group(self, _grp: Group<Ctx>) -> ReplBuilder<Ctx> {
+    const DEFAULT_PROMPT: &str = ">";
+
+    fn new() -> Self {
+        Self {
+            prompt: ReplBuilder::<Ctx>::DEFAULT_PROMPT.into(),
+            cmds: Vec::new(),
+            grps: Vec::new(),
+        }
+    }
+
+    pub fn with_prompt(mut self, prompt: &str) -> Self {
+        self.prompt = prompt.into();
         self
     }
 
-    pub fn with_command(self, _cmd: Command<Ctx>) -> ReplBuilder<Ctx> {
+    pub fn with_group(mut self, grp: Group<Ctx>) -> Self {
+        self.grps.push(grp);
+        self
+    }
+
+    pub fn with_command(mut self, cmd: Command<Ctx>) -> Self {
+        self.cmds.push(cmd);
         self
     }
 
     pub fn build(self) -> Repl<Ctx> {
         Repl::<Ctx> {
-            reader: Reader::new(),
-            _grps: self.grps,
-            _cmds: self.cmds,
+            reader: Reader::new(&self.prompt),
+            grps: self.grps,
+            cmds: self.cmds,
         }
     }
 }
 
 pub struct Group<Ctx> {
-    _name: String,
+    name: String,
     cmds: Vec<Command<Ctx>>,
 }
 
 impl<Ctx> Group<Ctx> {
     pub fn new(name: &str) -> Self {
         Self {
-            _name: name.into(),
+            name: name.into(),
             cmds: Vec::new(),
         }
     }
@@ -87,7 +109,7 @@ impl<Ctx> Group<Ctx> {
 }
 
 pub struct Command<Ctx> {
-    _name: String,
+    name: String,
     params: Vec<Parameter>,
     _cb: Box<dyn FnOnce(Ctx, Args)>,
 }
@@ -98,7 +120,7 @@ impl<Ctx> Command<Ctx> {
         Cb: FnOnce(Ctx, Args) + 'static,
     {
         Self {
-            _name: name.into(),
+            name: name.into(),
             params: Vec::new(),
             _cb: Box::new(cb),
         }

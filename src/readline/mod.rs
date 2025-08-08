@@ -3,33 +3,40 @@ use rustyline::config::Builder;
 use rustyline::error::ReadlineError;
 use rustyline::history::MemHistory;
 use rustyline::{CompletionType, Editor};
-use tokenizer::{TokenList, Tokenizer};
+pub use tokenizer::TokenList;
 
 mod tokenizer;
 
+pub enum ReadError {
+    InvalidInput,
+    Eof,
+    Interrupted,
+    Io(String),
+}
+
 pub struct Reader {
-    tokenizer: Tokenizer,
     rusty: Editor<(), MemHistory>,
+    prompt: String,
 }
 
 impl Reader {
-    pub fn new() -> Self {
+    pub fn new(prompt: &str) -> Self {
         let rusty =
             Editor::with_config(Builder::new().completion_type(CompletionType::List).build())
                 .unwrap();
         //rl.set_helper(Some(CommandHelper::new(commands)));
         Self {
-            tokenizer: Tokenizer::new(),
             rusty,
+            prompt: prompt.into(),
         }
     }
 
-    pub fn read_line(&mut self) -> Result<TokenList, ()> {
-        let result = self.rusty.readline(">> ");
+    pub fn read_line(&mut self) -> Result<TokenList, ReadError> {
+        let result = self.rusty.readline(&self.prompt);
         match result {
-            Ok(line) => match self.tokenizer.tokenize(&line) {
+            Ok(line) => match tokenizer::tokenize(&line) {
                 Ok(list) => Ok(list),
-                Err(_) => Err(()),
+                Err(_) => Err(ReadError::InvalidInput),
             },
             /*
             match self.rl.helper().unwrap().parse(&line) {
@@ -45,15 +52,15 @@ impl Reader {
             },*/
             Err(ReadlineError::Interrupted) => {
                 debug!("CTRL-C");
-                Err(())
+                Err(ReadError::Interrupted)
             }
             Err(ReadlineError::Eof) => {
                 debug!("CTRL-D");
-                Err(())
+                Err(ReadError::Eof)
             }
             Err(err) => {
                 error!("{err:?}");
-                Err(())
+                Err(ReadError::Io(err.to_string()))
             }
         }
     }
