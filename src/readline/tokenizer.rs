@@ -78,7 +78,7 @@ pub fn tokenize(line: &str) -> Result<TokenList, ()> {
     match status {
         Status::Token => tokens.push_back(Token::plain(&token, begin, line.chars().count())),
         Status::Quote(_) => return Err(()),
-        _ => {}
+        Status::Idle => {}
     }
     Ok(tokens)
 }

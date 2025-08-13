@@ -7,14 +7,16 @@ mod readline;
 pub const NAME: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("VERSION");
 
-pub struct Repl<Ctx> {
+pub struct Repl<'a, Ctx> {
+    ctx: Option<&'a Ctx>,
     reader: Reader,
-    cmds: Vec<Command<Ctx>>,
     grps: Vec<Group<Ctx>>,
+    cmds: Vec<Command<Ctx>>,
 }
 
-impl<Ctx> Repl<Ctx> {
-    pub fn builder() -> ReplBuilder<Ctx> {
+impl<'a, Ctx> Repl<'a, Ctx> {
+    #[must_use]
+    pub fn builder() -> ReplBuilder<'a, Ctx> {
         ReplBuilder::new()
     }
 
@@ -23,7 +25,7 @@ impl<Ctx> Repl<Ctx> {
             match self.reader.read_line() {
                 Ok(tokens) => {
                     trace!("{tokens:?}");
-                    parser::parse(&self.cmds, &self.grps, &tokens);
+                    parser::parse(self, self.ctx, &self.grps, &self.cmds, &tokens);
                 }
                 /*
                 match self.rl.helper().unwrap().parse(&line) {
@@ -42,46 +44,72 @@ impl<Ctx> Repl<Ctx> {
                     eprintln!("{e}");
                     break;
                 }
-                Err(ReadError::Eof) | Err(ReadError::Interrupted) => break,
+                Err(ReadError::Eof | ReadError::Interrupted) => break,
+            }
+        }
+    }
+
+    pub fn help(&self) {
+        println!("COMMANDS");
+        for c in &self.cmds {
+            println!("    {}", c.name);
+        }
+        println!("GROUPS");
+        for g in &self.grps {
+            for c in &g.cmds {
+                println!("    {} {}", g.name, c.name);
             }
         }
     }
 }
 
-pub struct ReplBuilder<Ctx> {
+pub struct ReplBuilder<'a, Ctx> {
+    ctx: Option<&'a Ctx>,
     prompt: String,
-    cmds: Vec<Command<Ctx>>,
     grps: Vec<Group<Ctx>>,
+    cmds: Vec<Command<Ctx>>,
 }
 
-impl<Ctx> ReplBuilder<Ctx> {
-    const DEFAULT_PROMPT: &str = ">";
+impl<'a, Ctx> ReplBuilder<'a, Ctx> {
+    const DEFAULT_PROMPT: &'static str = ">";
 
     fn new() -> Self {
         Self {
+            ctx: None,
             prompt: ReplBuilder::<Ctx>::DEFAULT_PROMPT.into(),
-            cmds: Vec::new(),
             grps: Vec::new(),
+            cmds: Vec::new(),
         }
     }
 
+    #[must_use]
+    pub fn with_context(mut self, ctx: &'a Ctx) -> Self {
+        self.ctx = Some(ctx);
+        self
+    }
+
+    #[must_use]
     pub fn with_prompt(mut self, prompt: &str) -> Self {
         self.prompt = prompt.into();
         self
     }
 
+    #[must_use]
     pub fn with_group(mut self, grp: Group<Ctx>) -> Self {
         self.grps.push(grp);
         self
     }
 
+    #[must_use]
     pub fn with_command(mut self, cmd: Command<Ctx>) -> Self {
         self.cmds.push(cmd);
         self
     }
 
-    pub fn build(self) -> Repl<Ctx> {
+    #[must_use]
+    pub fn build(self) -> Repl<'a, Ctx> {
         Repl::<Ctx> {
+            ctx: self.ctx,
             reader: Reader::new(&self.prompt),
             grps: self.grps,
             cmds: self.cmds,
@@ -95,6 +123,7 @@ pub struct Group<Ctx> {
 }
 
 impl<Ctx> Group<Ctx> {
+    #[must_use]
     pub fn new(name: &str) -> Self {
         Self {
             name: name.into(),
@@ -102,30 +131,34 @@ impl<Ctx> Group<Ctx> {
         }
     }
 
+    #[must_use]
     pub fn with_command(mut self, cmd: Command<Ctx>) -> Self {
         self.cmds.push(cmd);
         self
     }
 }
 
+type Callback<Ctx> = Box<dyn Fn(&Repl<Ctx>, Option<&Ctx>, Args)>;
+
 pub struct Command<Ctx> {
     name: String,
     params: Vec<Parameter>,
-    _cb: Box<dyn FnOnce(Ctx, Args)>,
+    cb: Callback<Ctx>,
 }
 
 impl<Ctx> Command<Ctx> {
     pub fn new<Cb>(name: &str, cb: Cb) -> Self
     where
-        Cb: FnOnce(Ctx, Args) + 'static,
+        Cb: Fn(&Repl<Ctx>, Option<&Ctx>, Args) + 'static,
     {
         Self {
             name: name.into(),
             params: Vec::new(),
-            _cb: Box::new(cb),
+            cb: Box::new(cb),
         }
     }
 
+    #[must_use]
     pub fn with_parameter(mut self, param: Parameter) -> Self {
         self.params.push(param);
         self
@@ -137,6 +170,7 @@ pub enum Parameter {
 }
 
 impl Parameter {
+    #[must_use]
     pub fn string(name: &str) -> Self {
         Self::String(name.into())
     }

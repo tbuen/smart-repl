@@ -32,11 +32,10 @@ impl Reader {
     }
 
     pub fn read_line(&mut self) -> Result<TokenList, ReadError> {
-        let result = self.rusty.readline(&self.prompt);
-        match result {
+        match self.rusty.readline(&self.prompt) {
             Ok(line) => match tokenizer::tokenize(&line) {
                 Ok(list) => Ok(list),
-                Err(_) => Err(ReadError::InvalidInput),
+                Err(()) => Err(ReadError::InvalidInput),
             },
             /*
             match self.rl.helper().unwrap().parse(&line) {

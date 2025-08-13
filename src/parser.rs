@@ -1,7 +1,13 @@
 use super::readline::TokenList;
-use super::{Command, Group};
+use super::{Args, Command, Group, Repl};
 
-pub fn parse<Ctx>(cmds: &[Command<Ctx>], grps: &[Group<Ctx>], tokens: &TokenList) {
+pub fn parse<Ctx>(
+    repl: &Repl<Ctx>,
+    ctx: Option<&Ctx>,
+    grps: &[Group<Ctx>],
+    cmds: &[Command<Ctx>],
+    tokens: &TokenList,
+) {
     let mut cmd: Option<&Command<Ctx>> = None;
     let mut grp: Option<&Group<Ctx>> = None;
     for token in tokens {
@@ -24,5 +30,8 @@ pub fn parse<Ctx>(cmds: &[Command<Ctx>], grps: &[Group<Ctx>], tokens: &TokenList
             eprintln!("No such command or group: {}", token.text);
             break;
         }
+    }
+    if let Some(c) = cmd {
+        (c.cb)(repl, ctx, Args {});
     }
 }
