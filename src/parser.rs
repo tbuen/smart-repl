@@ -1,37 +1,46 @@
-use super::readline::TokenList;
-use super::{Args, Command, Group, Repl};
+use crate::tokenizer::TokenList;
+use crate::{Args, Callback, Repl};
 
-pub fn parse<Ctx>(
-    repl: &Repl<Ctx>,
-    ctx: Option<&Ctx>,
-    grps: &[Group<Ctx>],
-    cmds: &[Command<Ctx>],
-    tokens: &TokenList,
-) {
-    let mut cmd: Option<&Command<Ctx>> = None;
-    let mut grp: Option<&Group<Ctx>> = None;
+pub type Tree<Ctx> = Vec<Item<Ctx>>;
+
+pub struct Item<Ctx> {
+    pub name: String,
+    pub typ: ItemType<Ctx>,
+    pub children: Tree<Ctx>,
+}
+
+pub enum ItemType<Ctx> {
+    Group,
+    Command(Callback<Ctx>),
+    //Param(ParamType),
+}
+
+/*enum ParamType {
+    Bool,
+    String,
+}*/
+
+pub fn parse<Ctx>(repl: &Repl<Ctx>, ctx: Option<&Ctx>, tree: &Tree<Ctx>, tokens: &TokenList) {
+    //let mut cmd: Option<&Command<Ctx>> = None;
+    //let mut grp: Option<&Group<Ctx>> = None;
+    //let mut item: Option<&ParseTreeItem<Ctx>> = None;
+    let mut tree = tree;
+    let mut cb = None;
     for token in tokens {
-        if let Some(c) = cmd {
-            println!("command found: {}", c.name);
-            break;
-        } else if let Some(g) = grp {
-            println!("group found: {}", g.name);
-            if let Some(c) = g.cmds.iter().find(|c| c.name == token.text) {
-                cmd = Some(c);
-            } else {
-                eprintln!("No such command: {}", token.text);
-                break;
+        if let Some(i) = tree.iter().find(|i| i.name == token.text) {
+            match &i.typ {
+                ItemType::Group => tree = &i.children,
+                ItemType::Command(c) => {
+                    cb = Some(c);
+                    break;
+                } //ItemType::Param(_) => todo!(),
             }
-        } else if let Some(g) = grps.iter().find(|g| g.name == token.text) {
-            grp = Some(g);
-        } else if let Some(c) = cmds.iter().find(|c| c.name == token.text) {
-            cmd = Some(c);
         } else {
-            eprintln!("No such command or group: {}", token.text);
+            eprintln!("*** not found: {}", token.text);
             break;
         }
     }
-    if let Some(c) = cmd {
-        (c.cb)(repl, ctx, Args {});
+    if let Some(c) = cb {
+        (c)(repl, ctx, Args {});
     }
 }

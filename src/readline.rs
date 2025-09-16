@@ -1,11 +1,9 @@
+use crate::tokenizer::{self, TokenList};
 use log::{debug, error};
 use rustyline::config::Builder;
 use rustyline::error::ReadlineError;
 use rustyline::history::MemHistory;
 use rustyline::{CompletionType, Editor};
-pub use tokenizer::TokenList;
-
-mod tokenizer;
 
 pub enum ReadError {
     InvalidInput,

@@ -1,8 +1,10 @@
 use log::trace;
+use parser::{Item, ItemType, Tree};
 use readline::{ReadError, Reader};
 
 mod parser;
 mod readline;
+mod tokenizer;
 
 pub const NAME: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("VERSION");
@@ -10,8 +12,7 @@ pub const VERSION: &str = env!("VERSION");
 pub struct Repl<'a, Ctx> {
     ctx: Option<&'a Ctx>,
     reader: Reader,
-    grps: Vec<Group<Ctx>>,
-    cmds: Vec<Command<Ctx>>,
+    tree: Tree<Ctx>,
 }
 
 impl<'a, Ctx> Repl<'a, Ctx> {
@@ -25,7 +26,7 @@ impl<'a, Ctx> Repl<'a, Ctx> {
             match self.reader.read_line() {
                 Ok(tokens) => {
                     trace!("{tokens:?}");
-                    parser::parse(self, self.ctx, &self.grps, &self.cmds, &tokens);
+                    parser::parse(self, self.ctx, &self.tree, &tokens);
                 }
                 /*
                 match self.rl.helper().unwrap().parse(&line) {
@@ -51,14 +52,23 @@ impl<'a, Ctx> Repl<'a, Ctx> {
 
     pub fn help(&self) {
         println!("COMMANDS");
-        for c in &self.cmds {
+        for c in self
+            .tree
+            .iter()
+            .filter(|i| matches!(i.typ, ItemType::Command(_)))
+        {
             println!("    {}", c.name);
         }
         println!("GROUPS");
-        for g in &self.grps {
-            for c in &g.cmds {
+        for g in self
+            .tree
+            .iter()
+            .filter(|i| matches!(i.typ, ItemType::Group))
+        {
+            /*for c in &g.cmds {
                 println!("    {} {}", g.name, c.name);
-            }
+            }*/
+            println!("    {}", g.name);
         }
     }
 }
@@ -108,11 +118,36 @@ impl<'a, Ctx> ReplBuilder<'a, Ctx> {
 
     #[must_use]
     pub fn build(self) -> Repl<'a, Ctx> {
+        let mut tree = Tree::new();
+        for c in self.cmds {
+            let i = Item {
+                name: c.name,
+                typ: ItemType::Command(c.cb),
+                children: Tree::new(),
+            };
+            tree.push(i);
+        }
+        for g in self.grps {
+            let mut ch = Tree::new();
+            for c in g.cmds {
+                let i = Item {
+                    name: c.name,
+                    typ: ItemType::Command(c.cb),
+                    children: Tree::new(),
+                };
+                ch.push(i);
+            }
+            let i = Item {
+                name: g.name,
+                typ: ItemType::Group,
+                children: ch,
+            };
+            tree.push(i);
+        }
         Repl::<Ctx> {
             ctx: self.ctx,
             reader: Reader::new(&self.prompt),
-            grps: self.grps,
-            cmds: self.cmds,
+            tree,
         }
     }
 }
