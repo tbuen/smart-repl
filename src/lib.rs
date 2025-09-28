@@ -1,6 +1,7 @@
 use log::trace;
-use parser::{Item, ItemType, Tree};
 use readline::{ReadError, Reader};
+use std::collections::HashMap;
+use std::rc::Rc;
 
 mod parser;
 mod readline;
@@ -9,10 +10,21 @@ mod tokenizer;
 pub const NAME: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("VERSION");
 
+type CbMap<Ctx> = HashMap<Vec<String>, Callback<Ctx>>;
+
+#[derive(Debug)]
+enum Selection {
+    Fixed(HashMap<String, Selection>),
+    String((String, Box<Selection>)),
+    Bool((HashMap<bool, String>, Box<Selection>)),
+    End,
+}
+
 pub struct Repl<'a, Ctx> {
     ctx: Option<&'a Ctx>,
     reader: Reader,
-    tree: Tree<Ctx>,
+    parse_tree: Rc<Selection>,
+    cb_map: CbMap<Ctx>,
 }
 
 impl<'a, Ctx> Repl<'a, Ctx> {
@@ -26,7 +38,10 @@ impl<'a, Ctx> Repl<'a, Ctx> {
             match self.reader.read_line() {
                 Ok(tokens) => {
                     trace!("{tokens:?}");
-                    parser::parse(self, self.ctx, &self.tree, &tokens);
+                    let (cmd, args) = parser::parse(&self.parse_tree, &tokens);
+                    if let Some(cb) = self.cb_map.get(&cmd) {
+                        (cb)(self, self.ctx, args);
+                    }
                 }
                 /*
                 match self.rl.helper().unwrap().parse(&line) {
@@ -40,22 +55,26 @@ impl<'a, Ctx> Repl<'a, Ctx> {
                     }
                     Err(_) => println!("## invalid input"),
                 },*/
-                Err(ReadError::InvalidInput) => println!("Invalid input"),
+                Err(ReadError::InvalidInput) => eprintln!("Invalid input"),
                 Err(ReadError::Io(e)) => {
                     eprintln!("{e}");
                     break;
                 }
-                Err(ReadError::Eof | ReadError::Interrupted) => break,
+                Err(ReadError::Eof | ReadError::Interrupted) => {
+                    println!("Bye");
+                    break;
+                }
             }
         }
     }
 
     pub fn help(&self) {
+        /*
         println!("COMMANDS");
         for c in self
             .tree
             .iter()
-            .filter(|i| matches!(i.typ, ItemType::Command(_)))
+            .filter(|i| matches!(i.typ, ItemType::Command))
         {
             println!("    {}", c.name);
         }
@@ -65,11 +84,11 @@ impl<'a, Ctx> Repl<'a, Ctx> {
             .iter()
             .filter(|i| matches!(i.typ, ItemType::Group))
         {
-            /*for c in &g.cmds {
+            for c in &g.children {
                 println!("    {} {}", g.name, c.name);
-            }*/
-            println!("    {}", g.name);
+            }
         }
+        */
     }
 }
 
@@ -116,44 +135,59 @@ impl<'a, Ctx> ReplBuilder<'a, Ctx> {
         self
     }
 
+    fn build_parse_tree(grps: Vec<Group<Ctx>>, cmds: Vec<Command<Ctx>>) -> (Selection, CbMap<Ctx>) {
+        let mut map = HashMap::new();
+        let mut cbs = HashMap::new();
+        for g in grps {
+            let (s, c) = Self::build_parse_tree(g.grps, g.cmds);
+            for (path, cb) in c {
+                let mut p = vec![g.name.clone()];
+                p.extend(path);
+                cbs.insert(p, cb);
+            }
+            map.insert(g.name, s);
+        }
+        for mut c in cmds {
+            let mut s = Selection::End;
+            while let Some(p) = c.params.pop() {
+                s = match p {
+                    Parameter::String(n) => Selection::String((n, Box::new(s))),
+                    Parameter::Bool(t, f) => {
+                        let mut map = HashMap::new();
+                        map.insert(true, t);
+                        map.insert(false, f);
+                        Selection::Bool((map, Box::new(s)))
+                    }
+                };
+            }
+            cbs.insert(vec![c.name.clone()], c.cb);
+            map.insert(c.name, s);
+        }
+        if map.is_empty() {
+            (Selection::End, cbs)
+        } else {
+            (Selection::Fixed(map), cbs)
+        }
+    }
+
     #[must_use]
     pub fn build(self) -> Repl<'a, Ctx> {
-        let mut tree = Tree::new();
-        for c in self.cmds {
-            let i = Item {
-                name: c.name,
-                typ: ItemType::Command(c.cb),
-                children: Tree::new(),
-            };
-            tree.push(i);
-        }
-        for g in self.grps {
-            let mut ch = Tree::new();
-            for c in g.cmds {
-                let i = Item {
-                    name: c.name,
-                    typ: ItemType::Command(c.cb),
-                    children: Tree::new(),
-                };
-                ch.push(i);
-            }
-            let i = Item {
-                name: g.name,
-                typ: ItemType::Group,
-                children: ch,
-            };
-            tree.push(i);
-        }
+        let (parse_tree, cb_map) = Self::build_parse_tree(self.grps, self.cmds);
+
+        trace!("{parse_tree:?}");
+        let parse_tree = Rc::new(parse_tree);
         Repl::<Ctx> {
             ctx: self.ctx,
-            reader: Reader::new(&self.prompt),
-            tree,
+            reader: Reader::new(&self.prompt, parse_tree.clone()),
+            parse_tree,
+            cb_map,
         }
     }
 }
 
 pub struct Group<Ctx> {
     name: String,
+    grps: Vec<Group<Ctx>>,
     cmds: Vec<Command<Ctx>>,
 }
 
@@ -162,8 +196,15 @@ impl<Ctx> Group<Ctx> {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.into(),
+            grps: Vec::new(),
             cmds: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_group(mut self, grp: Group<Ctx>) -> Self {
+        self.grps.push(grp);
+        self
     }
 
     #[must_use]
@@ -202,12 +243,18 @@ impl<Ctx> Command<Ctx> {
 
 pub enum Parameter {
     String(String),
+    Bool(String, String),
 }
 
 impl Parameter {
     #[must_use]
     pub fn string(name: &str) -> Self {
         Self::String(name.into())
+    }
+
+    #[must_use]
+    pub fn bool(true_name: &str, false_name: &str) -> Self {
+        Self::Bool(true_name.into(), false_name.into())
     }
 }
 

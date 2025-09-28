@@ -5,9 +5,9 @@ pub type TokenList = VecDeque<Token>;
 #[derive(Debug, PartialEq)]
 pub struct Token {
     pub text: String,
-    begin: usize,
-    end: usize,
-    quoted: bool,
+    pub begin: usize,
+    pub end: usize,
+    pub quoted: bool,
 }
 
 impl Token {
