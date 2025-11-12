@@ -1,4 +1,5 @@
 use log::trace;
+use parser::ParseResult;
 use readline::{ReadError, Reader};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -38,9 +39,13 @@ impl<'a, Ctx> Repl<'a, Ctx> {
             match self.reader.read_line() {
                 Ok(tokens) => {
                     trace!("{tokens:?}");
-                    let (cmd, args) = parser::parse(&self.parse_tree, &tokens);
-                    if let Some(cb) = self.cb_map.get(&cmd) {
-                        (cb)(self, self.ctx, args);
+                    let (result, cmds, args) = parser::parse(&self.parse_tree, tokens);
+                    if let ParseResult::Success = result {
+                        if let Some(cb) = self.cb_map.get(&cmds) {
+                            (cb)(self, self.ctx, args);
+                        }
+                    } else {
+                        eprintln!("err: {result:?}");
                     }
                 }
                 /*

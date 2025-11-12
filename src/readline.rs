@@ -1,5 +1,6 @@
 use crate::Selection;
-use crate::tokenizer::{TokenList, tokenize};
+use crate::tokenizer;
+use crate::tokenizer::TokenList;
 use rustyline::completion::{Completer, Pair};
 use rustyline::config::Builder;
 use rustyline::error::ReadlineError;
@@ -33,7 +34,7 @@ impl Reader {
 
     pub fn read_line(&mut self) -> Result<TokenList, ReadError> {
         match self.rusty.readline(&self.prompt) {
-            Ok(line) => match tokenize(&line) {
+            Ok(line) => match tokenizer::tokenize(&line) {
                 Ok(list) => Ok(list),
                 Err(()) => Err(ReadError::InvalidInput),
             },
@@ -67,7 +68,7 @@ impl Completer for MyHelper {
         let mut pairs = vec![];
         let mut rpos = 0;
 
-        if let Ok(mut tokens) = tokenize(line) {
+        if let Ok(mut tokens) = tokenizer::tokenize(line) {
             let mut sel = self.parse_tree.as_ref();
 
             loop {
@@ -81,8 +82,8 @@ impl Completer for MyHelper {
                             } else {
                                 for str in map.keys().filter(|k| k.starts_with(&token.text)) {
                                     pairs.push(Pair {
-                                        display: str.to_string(),
-                                        replacement: str.to_string() + " ",
+                                        display: str.clone(),
+                                        replacement: str.clone() + " ",
                                     });
                                 }
                                 rpos = token.begin;
@@ -93,8 +94,8 @@ impl Completer for MyHelper {
                         None => {
                             for str in map.keys() {
                                 pairs.push(Pair {
-                                    display: str.to_string(),
-                                    replacement: str.to_string() + " ",
+                                    display: str.clone(),
+                                    replacement: str.clone() + " ",
                                 });
                             }
                             rpos = pos;
@@ -122,8 +123,8 @@ impl Completer for MyHelper {
                             } else {
                                 for str in map.values().filter(|v| v.starts_with(&token.text)) {
                                     pairs.push(Pair {
-                                        display: str.to_string(),
-                                        replacement: str.to_string() + " ",
+                                        display: str.clone(),
+                                        replacement: str.clone() + " ",
                                     });
                                 }
                                 rpos = token.begin;
@@ -134,8 +135,8 @@ impl Completer for MyHelper {
                         None => {
                             for str in map.values() {
                                 pairs.push(Pair {
-                                    display: str.to_string(),
-                                    replacement: str.to_string() + " ",
+                                    display: str.clone(),
+                                    replacement: str.clone() + " ",
                                 });
                             }
                             rpos = pos;

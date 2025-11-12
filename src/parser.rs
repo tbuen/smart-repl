@@ -2,26 +2,61 @@ use crate::Args;
 use crate::Selection;
 use crate::tokenizer::TokenList;
 
-pub fn parse(sel: &Selection, tokens: &TokenList) -> (Vec<String>, Args) {
+#[derive(Debug)]
+pub enum ParseResult {
+    Success,
+    MissingCommand,
+    InvalidCommand,
+    MissingParameter,
+    InvalidParameter,
+    ExtraToken,
+}
+
+pub fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec<String>, Args) {
     let mut sel = sel;
-    let mut result = Vec::new();
-    for token in tokens {
+    let mut result = ParseResult::Success;
+    let mut commands = Vec::new();
+
+    while matches!(result, ParseResult::Success) {
         match sel {
-            // TODO token.quoted abfragen
-            Selection::Fixed(h) => {
-                if let Some(s) = h.get(&token.text) {
-                    result.push(token.text.clone());
+            Selection::Fixed(map) => match tokens.pop_front() {
+                Some(token) if !token.quoted => {
+                    if let Some(s) = map.get(&token.text) {
+                        commands.push(token.text);
+                        sel = s;
+                    } else {
+                        result = ParseResult::InvalidCommand;
+                    }
+                }
+                Some(_) => result = ParseResult::InvalidCommand,
+                None => result = ParseResult::MissingCommand,
+            },
+            Selection::String((_str, s)) => match tokens.pop_front() {
+                Some(_token) => {
+                    // push token.text to args
                     sel = s;
-                } else {
-                    eprintln!("*** not found: {}", token.text);
+                }
+                None => result = ParseResult::MissingParameter,
+            },
+            Selection::Bool((map, s)) => match tokens.pop_front() {
+                Some(token) if !token.quoted => {
+                    if map.values().any(|v| v == &token.text) {
+                        // push bool to args
+                        sel = s;
+                    } else {
+                        result = ParseResult::InvalidParameter;
+                    }
+                }
+                Some(_) => result = ParseResult::InvalidParameter,
+                None => result = ParseResult::MissingParameter,
+            },
+            Selection::End => {
+                if tokens.is_empty() {
                     break;
                 }
+                result = ParseResult::ExtraToken;
             }
-            _ => break,
         }
     }
-    if !matches!(sel, Selection::End) {
-        eprintln!("*** missing...");
-    }
-    (result, Args {})
+    (result, commands, Args {})
 }
