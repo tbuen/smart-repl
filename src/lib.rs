@@ -15,9 +15,20 @@ type CbMap<Ctx> = HashMap<Vec<String>, Callback<Ctx>>;
 
 #[derive(Debug)]
 enum Selection {
-    Fixed(HashMap<String, Selection>),
-    String((String, Box<Selection>)),
-    Bool((HashMap<bool, String>, Box<Selection>)),
+    Fixed {
+        map: HashMap<String, Selection>,
+    },
+    String {
+        name: String,
+        optional: bool,
+        next: Box<Selection>,
+    },
+    Bool {
+        name: String,
+        optional: bool,
+        map: HashMap<bool, String>,
+        next: Box<Selection>,
+    },
     End,
 }
 
@@ -154,16 +165,31 @@ impl<'a, Ctx> ReplBuilder<'a, Ctx> {
         }
         for mut c in cmds {
             let mut s = Selection::End;
+            let mut optional = c.optional;
             while let Some(p) = c.params.pop() {
                 s = match p {
-                    Parameter::String(n) => Selection::String((n, Box::new(s))),
-                    Parameter::Bool(t, f) => {
+                    Parameter::String(name) => Selection::String {
+                        name,
+                        optional,
+                        next: Box::new(s),
+                    },
+                    Parameter::Bool {
+                        name,
+                        true_name,
+                        false_name,
+                    } => {
                         let mut map = HashMap::new();
-                        map.insert(true, t);
-                        map.insert(false, f);
-                        Selection::Bool((map, Box::new(s)))
+                        map.insert(true, true_name);
+                        map.insert(false, false_name);
+                        Selection::Bool {
+                            name,
+                            optional,
+                            map,
+                            next: Box::new(s),
+                        }
                     }
                 };
+                optional = false;
             }
             cbs.insert(vec![c.name.clone()], c.cb);
             map.insert(c.name, s);
@@ -171,7 +197,7 @@ impl<'a, Ctx> ReplBuilder<'a, Ctx> {
         if map.is_empty() {
             (Selection::End, cbs)
         } else {
-            (Selection::Fixed(map), cbs)
+            (Selection::Fixed { map }, cbs)
         }
     }
 
@@ -224,6 +250,7 @@ type Callback<Ctx> = Box<dyn Fn(&Repl<Ctx>, Option<&Ctx>, Args)>;
 pub struct Command<Ctx> {
     name: String,
     params: Vec<Parameter>,
+    optional: bool,
     cb: Callback<Ctx>,
 }
 
@@ -235,6 +262,7 @@ impl<Ctx> Command<Ctx> {
         Self {
             name: name.into(),
             params: Vec::new(),
+            optional: false,
             cb: Box::new(cb),
         }
     }
@@ -244,11 +272,21 @@ impl<Ctx> Command<Ctx> {
         self.params.push(param);
         self
     }
+
+    #[must_use]
+    pub fn last_parameter_optional(mut self) -> Self {
+        self.optional = true;
+        self
+    }
 }
 
 pub enum Parameter {
     String(String),
-    Bool(String, String),
+    Bool {
+        name: String,
+        true_name: String,
+        false_name: String,
+    },
 }
 
 impl Parameter {
@@ -258,9 +296,55 @@ impl Parameter {
     }
 
     #[must_use]
-    pub fn bool(true_name: &str, false_name: &str) -> Self {
-        Self::Bool(true_name.into(), false_name.into())
+    pub fn bool(name: &str, true_name: &str, false_name: &str) -> Self {
+        Self::Bool {
+            name: name.into(),
+            true_name: true_name.into(),
+            false_name: false_name.into(),
+        }
     }
 }
 
-pub struct Args;
+#[derive(Debug)]
+pub enum ArgError {
+    NotAvailable,
+}
+
+pub struct Args {
+    strings: HashMap<String, Option<String>>,
+    bools: HashMap<String, Option<bool>>,
+}
+
+impl Args {
+    fn new() -> Self {
+        Args {
+            strings: HashMap::new(),
+            bools: HashMap::new(),
+        }
+    }
+
+    fn add_string(&mut self, name: &str, val: Option<&str>) {
+        self.strings
+            .insert(name.into(), val.map(std::convert::Into::into));
+    }
+
+    fn add_bool(&mut self, name: &str, val: Option<bool>) {
+        self.bools.insert(name.into(), val);
+    }
+
+    #[allow(clippy::missing_errors_doc)]
+    pub fn get_string(&self, name: &str) -> Result<Option<String>, ArgError> {
+        match self.strings.get(name) {
+            Some(o) => Ok(o.clone()),
+            None => Err(ArgError::NotAvailable),
+        }
+    }
+
+    #[allow(clippy::missing_errors_doc)]
+    pub fn get_bool(&self, name: &str) -> Result<Option<bool>, ArgError> {
+        match self.bools.get(name) {
+            Some(o) => Ok(*o),
+            None => Err(ArgError::NotAvailable),
+        }
+    }
+}

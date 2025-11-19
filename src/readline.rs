@@ -58,6 +58,8 @@ impl MyHelper {
 
 impl Completer for MyHelper {
     type Candidate = Pair;
+
+    #[allow(clippy::too_many_lines)]
     fn complete(
         &self,
         line: &str,
@@ -73,7 +75,7 @@ impl Completer for MyHelper {
 
             loop {
                 match sel {
-                    Selection::Fixed(map) => match tokens.pop_front() {
+                    Selection::Fixed { map } => match tokens.pop_front() {
                         Some(token) if !token.quoted => {
                             if let Some(s) = map.get(&token.text)
                                 && line.len() > token.end
@@ -102,30 +104,53 @@ impl Completer for MyHelper {
                             break;
                         }
                     },
-                    Selection::String((str, s)) => match tokens.pop_front() {
+                    Selection::String {
+                        name,
+                        optional,
+                        next,
+                    } => match tokens.pop_front() {
                         Some(token) if line.len() > token.end => {
-                            sel = s;
+                            sel = next;
                         }
                         Some(_) => break,
                         None => {
-                            pairs.push(Pair {
-                                display: format!("<{str}>"),
-                                replacement: format!("<{str}> "),
-                            });
+                            if *optional {
+                                pairs.push(Pair {
+                                    display: format!("[<{name}>]"),
+                                    replacement: format!("[<{name}>] "),
+                                });
+                            } else {
+                                pairs.push(Pair {
+                                    display: format!("<{name}>"),
+                                    replacement: format!("<{name}> "),
+                                });
+                            }
                             rpos = pos;
                             break;
                         }
                     },
-                    Selection::Bool((map, s)) => match tokens.pop_front() {
+                    Selection::Bool {
+                        name: _,
+                        optional,
+                        map,
+                        next,
+                    } => match tokens.pop_front() {
                         Some(token) if !token.quoted => {
                             if map.values().any(|v| v == &token.text) && line.len() > token.end {
-                                sel = s;
+                                sel = next;
                             } else {
                                 for str in map.values().filter(|v| v.starts_with(&token.text)) {
-                                    pairs.push(Pair {
-                                        display: str.clone(),
-                                        replacement: str.clone() + " ",
-                                    });
+                                    if *optional {
+                                        pairs.push(Pair {
+                                            display: format!("[{}]", str.clone()),
+                                            replacement: str.clone() + " ",
+                                        });
+                                    } else {
+                                        pairs.push(Pair {
+                                            display: str.clone(),
+                                            replacement: str.clone() + " ",
+                                        });
+                                    }
                                 }
                                 rpos = token.begin;
                                 break;
@@ -134,10 +159,17 @@ impl Completer for MyHelper {
                         Some(_) => break,
                         None => {
                             for str in map.values() {
-                                pairs.push(Pair {
-                                    display: str.clone(),
-                                    replacement: str.clone() + " ",
-                                });
+                                if *optional {
+                                    pairs.push(Pair {
+                                        display: format!("[{}]", str.clone()),
+                                        replacement: str.clone() + " ",
+                                    });
+                                } else {
+                                    pairs.push(Pair {
+                                        display: str.clone(),
+                                        replacement: str.clone() + " ",
+                                    });
+                                }
                             }
                             rpos = pos;
                             break;
