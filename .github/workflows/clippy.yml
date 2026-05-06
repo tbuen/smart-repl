@@ -12,6 +12,6 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: clippy
         run: cargo clippy --all-targets --all-features

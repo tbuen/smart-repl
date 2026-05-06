@@ -75,17 +75,23 @@ impl Completer for MyHelper {
 
             loop {
                 match sel {
-                    Selection::Fixed { map } => match tokens.pop_front() {
+                    /*if let Some((_, s)) = fixed.iter().find(|(n, _)| n == &token.text) {
+                        commands.push(token.text);
+                        sel = s;
+                    } else {*/
+                    Selection::Fixed(fixed) => match tokens.pop_front() {
                         Some(token) if !token.quoted => {
-                            if let Some(s) = map.get(&token.text)
+                            if let Some((_, s)) = fixed.iter().find(|(n, _)| n == &token.text)
                                 && line.len() > token.end
                             {
                                 sel = s;
                             } else {
-                                for str in map.keys().filter(|k| k.starts_with(&token.text)) {
+                                for (n, _) in
+                                    fixed.iter().filter(|(n, _)| n.starts_with(&token.text))
+                                {
                                     pairs.push(Pair {
-                                        display: str.clone(),
-                                        replacement: str.clone() + " ",
+                                        display: n.clone(),
+                                        replacement: n.clone() + " ",
                                     });
                                 }
                                 rpos = token.begin;
@@ -94,10 +100,10 @@ impl Completer for MyHelper {
                         }
                         Some(_) => break,
                         None => {
-                            for str in map.keys() {
+                            for (n, _) in fixed {
                                 pairs.push(Pair {
-                                    display: str.clone(),
-                                    replacement: str.clone() + " ",
+                                    display: n.clone(),
+                                    replacement: n.clone() + " ",
                                 });
                             }
                             rpos = pos;
@@ -124,6 +130,52 @@ impl Completer for MyHelper {
                                     display: format!("<{name}>"),
                                     replacement: format!("<{name}> "),
                                 });
+                            }
+                            rpos = pos;
+                            break;
+                        }
+                    },
+                    Selection::Alt {
+                        name: _,
+                        optional,
+                        values,
+                        next,
+                    } => match tokens.pop_front() {
+                        Some(token) if !token.quoted => {
+                            if values.contains(&token.text) && line.len() > token.end {
+                                sel = next;
+                            } else {
+                                for str in values.iter().filter(|v| v.starts_with(&token.text)) {
+                                    if *optional {
+                                        pairs.push(Pair {
+                                            display: format!("[{}]", str.clone()),
+                                            replacement: str.clone() + " ",
+                                        });
+                                    } else {
+                                        pairs.push(Pair {
+                                            display: str.clone(),
+                                            replacement: str.clone() + " ",
+                                        });
+                                    }
+                                }
+                                rpos = token.begin;
+                                break;
+                            }
+                        }
+                        Some(_) => break,
+                        None => {
+                            for str in values {
+                                if *optional {
+                                    pairs.push(Pair {
+                                        display: format!("[{}]", str.clone()),
+                                        replacement: str.clone() + " ",
+                                    });
+                                } else {
+                                    pairs.push(Pair {
+                                        display: str.clone(),
+                                        replacement: str.clone() + " ",
+                                    });
+                                }
                             }
                             rpos = pos;
                             break;

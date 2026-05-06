@@ -20,9 +20,9 @@ pub fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec<String
 
     while matches!(result, ParseResult::Success) {
         match sel {
-            Selection::Fixed { map } => match tokens.pop_front() {
+            Selection::Fixed(fixed) => match tokens.pop_front() {
                 Some(token) if !token.quoted => {
-                    if let Some(s) = map.get(&token.text) {
+                    if let Some((_, s)) = fixed.iter().find(|(n, _)| n == &token.text) {
                         commands.push(token.text);
                         sel = s;
                     } else {
@@ -43,6 +43,34 @@ pub fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec<String
                 }
                 None if *optional => {
                     args.add_string(name, None);
+                    sel = next;
+                }
+                None => result = ParseResult::MissingParameter,
+            },
+            Selection::Alt {
+                name,
+                optional,
+                values,
+                next,
+            } => match tokens.pop_front() {
+                Some(token) if !token.quoted => {
+                    let mut found = false;
+                    for v in values {
+                        if v == &token.text {
+                            args.add_alt(name, Some(v));
+                            found = true;
+                            break;
+                        }
+                    }
+                    if found {
+                        sel = next;
+                    } else {
+                        result = ParseResult::InvalidParameter;
+                    }
+                }
+                Some(_) => result = ParseResult::InvalidParameter,
+                None if *optional => {
+                    args.add_alt(name, None);
                     sel = next;
                 }
                 None => result = ParseResult::MissingParameter,
