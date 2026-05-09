@@ -84,7 +84,7 @@ impl<'a, Ctx> Repl<'a, Ctx> {
                         match result {
                             ParseResult::Success => {
                                 if let Some(cb) = self.cb_map.get(&cmds) {
-                                    (cb)(self.ctx, args);
+                                    (cb)(self.ctx, &args);
                                 }
                             }
                             ParseResult::MissingCommand => {
@@ -189,45 +189,6 @@ impl<'a, Ctx> Repl<'a, Ctx> {
                 }
             }
         }
-
-        /*let mut last: Option<&Vec<String>> = None;
-        for HelpText { cmds, params, text } in &self.help_texts {
-            if cmds.starts_with(tokens) || tokens.starts_with(cmds) {
-                let mut start = 0;
-                if let Some(l) = last {
-                    while let Some(a) = cmds.get(start)
-                        && let Some(b) = l.get(start)
-                        && a == b
-                    {
-                        start += 1;
-                    }
-                    if start == 0 {
-                        println!();
-                    }
-                }
-                for _ in 0..start {
-                    print!("  ");
-                }
-                print!("{}\t\t", cmds[start].bold());
-                match text {
-                    Some(s) => println!("{s}"),
-                    None => println!(),
-                }
-                if let Some(ps) = params {
-                    for p in ps {
-                        for _ in 0..=start {
-                            print!("  ");
-                        }
-                        print!("{}\t\t", p.0);
-                        match &p.1 {
-                            Some(s) => println!("{s}"),
-                            None => println!(),
-                        }
-                    }
-                }
-                last = Some(cmds);
-            }
-        }*/
     }
 }
 
@@ -452,7 +413,7 @@ impl<Ctx> Group<Ctx> {
     }
 }
 
-type Callback<Ctx> = Box<dyn Fn(Option<&Ctx>, Args)>;
+type Callback<Ctx> = Box<dyn Fn(Option<&Ctx>, &Args)>;
 
 pub struct Command<Ctx> {
     name: String,
@@ -464,7 +425,7 @@ pub struct Command<Ctx> {
 impl<Ctx> Command<Ctx> {
     pub fn new<Cb>(name: &str, cb: Cb) -> Self
     where
-        Cb: Fn(Option<&Ctx>, Args) + 'static,
+        Cb: Fn(Option<&Ctx>, &Args) + 'static,
     {
         Self {
             name: name.into(),
