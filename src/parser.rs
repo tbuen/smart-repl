@@ -3,7 +3,7 @@ use crate::Selection;
 use crate::tokenizer::TokenList;
 
 #[derive(Debug)]
-pub enum ParseResult {
+pub(crate) enum ParseResult {
     Success,
     MissingCommand,
     InvalidCommand,
@@ -12,7 +12,7 @@ pub enum ParseResult {
     ExtraToken,
 }
 
-pub fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec<String>, Args) {
+pub(crate) fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec<String>, Args) {
     let mut sel = sel;
     let mut result = ParseResult::Success;
     let mut commands = Vec::new();
@@ -78,19 +78,15 @@ pub fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec<String
             Selection::Bool {
                 name,
                 optional,
-                map,
+                values: (t, f),
                 next,
             } => match tokens.pop_front() {
                 Some(token) if !token.quoted => {
-                    let mut found = false;
-                    for (k, v) in map {
-                        if v == &token.text {
-                            args.add_bool(name, Some(*k));
-                            found = true;
-                            break;
-                        }
-                    }
-                    if found {
+                    if t == &token.text {
+                        args.add_bool(name, Some(true));
+                        sel = next;
+                    } else if f == &token.text {
+                        args.add_bool(name, Some(false));
                         sel = next;
                     } else {
                         result = ParseResult::InvalidParameter;

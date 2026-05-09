@@ -8,20 +8,20 @@ use rustyline::history::MemHistory;
 use rustyline::{CompletionType, Context, Editor, Helper, Highlighter, Hinter, Validator};
 use std::rc::Rc;
 
-pub enum ReadError {
+pub(crate) enum ReadError {
     InvalidInput,
     Eof,
     Interrupted,
     Io(String),
 }
 
-pub struct Reader {
+pub(crate) struct Reader {
     rusty: Editor<MyHelper, MemHistory>,
     prompt: String,
 }
 
 impl Reader {
-    pub fn new(prompt: &str, parse_tree: Rc<Selection>) -> Self {
+    pub(crate) fn new(prompt: &str, parse_tree: Rc<Selection>) -> Self {
         let mut rusty =
             Editor::with_config(Builder::new().completion_type(CompletionType::List).build())
                 .unwrap();
@@ -32,7 +32,7 @@ impl Reader {
         }
     }
 
-    pub fn read_line(&mut self) -> Result<TokenList, ReadError> {
+    pub(crate) fn read_line(&mut self) -> Result<TokenList, ReadError> {
         match self.rusty.readline(&self.prompt) {
             Ok(line) => match tokenizer::tokenize(&line) {
                 Ok(list) => Ok(list),
@@ -59,13 +59,13 @@ impl MyHelper {
 impl Completer for MyHelper {
     type Candidate = Pair;
 
-    #[allow(clippy::too_many_lines)]
     fn complete(
         &self,
         line: &str,
         pos: usize,
         _: &Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
+        #[expect(clippy::string_slice)]
         let line = &line[..pos];
         let mut pairs = vec![];
         let mut rpos = 0;
@@ -75,10 +75,6 @@ impl Completer for MyHelper {
 
             loop {
                 match sel {
-                    /*if let Some((_, s)) = fixed.iter().find(|(n, _)| n == &token.text) {
-                        commands.push(token.text);
-                        sel = s;
-                    } else {*/
                     Selection::Fixed(fixed) => match tokens.pop_front() {
                         Some(token) if !token.quoted => {
                             if let Some((_, s)) = fixed.iter().find(|(n, _)| n == &token.text)
@@ -122,13 +118,13 @@ impl Completer for MyHelper {
                         None => {
                             if *optional {
                                 pairs.push(Pair {
-                                    display: format!("[<{name}>]"),
-                                    replacement: format!("[<{name}>] "),
+                                    display: format!("['{name}']"),
+                                    replacement: format!("['{name}'] "),
                                 });
                             } else {
                                 pairs.push(Pair {
-                                    display: format!("<{name}>"),
-                                    replacement: format!("<{name}> "),
+                                    display: format!("'{name}'"),
+                                    replacement: format!("'{name}' "),
                                 });
                             }
                             rpos = pos;
@@ -136,10 +132,10 @@ impl Completer for MyHelper {
                         }
                     },
                     Selection::Alt {
-                        name: _,
                         optional,
                         values,
                         next,
+                        ..
                     } => match tokens.pop_front() {
                         Some(token) if !token.quoted => {
                             if values.contains(&token.text) && line.len() > token.end {
@@ -182,25 +178,38 @@ impl Completer for MyHelper {
                         }
                     },
                     Selection::Bool {
-                        name: _,
                         optional,
-                        map,
+                        values: (t, f),
                         next,
+                        ..
                     } => match tokens.pop_front() {
                         Some(token) if !token.quoted => {
-                            if map.values().any(|v| v == &token.text) && line.len() > token.end {
+                            if (t == &token.text || f == &token.text) && line.len() > token.end {
                                 sel = next;
                             } else {
-                                for str in map.values().filter(|v| v.starts_with(&token.text)) {
+                                if t.starts_with(&token.text) {
                                     if *optional {
                                         pairs.push(Pair {
-                                            display: format!("[{}]", str.clone()),
-                                            replacement: str.clone() + " ",
+                                            display: format!("[{}]", t.clone()),
+                                            replacement: t.clone() + " ",
                                         });
                                     } else {
                                         pairs.push(Pair {
-                                            display: str.clone(),
-                                            replacement: str.clone() + " ",
+                                            display: t.clone(),
+                                            replacement: t.clone() + " ",
+                                        });
+                                    }
+                                }
+                                if f.starts_with(&token.text) {
+                                    if *optional {
+                                        pairs.push(Pair {
+                                            display: format!("[{}]", f.clone()),
+                                            replacement: f.clone() + " ",
+                                        });
+                                    } else {
+                                        pairs.push(Pair {
+                                            display: f.clone(),
+                                            replacement: f.clone() + " ",
                                         });
                                     }
                                 }
@@ -210,18 +219,24 @@ impl Completer for MyHelper {
                         }
                         Some(_) => break,
                         None => {
-                            for str in map.values() {
-                                if *optional {
-                                    pairs.push(Pair {
-                                        display: format!("[{}]", str.clone()),
-                                        replacement: str.clone() + " ",
-                                    });
-                                } else {
-                                    pairs.push(Pair {
-                                        display: str.clone(),
-                                        replacement: str.clone() + " ",
-                                    });
-                                }
+                            if *optional {
+                                pairs.push(Pair {
+                                    display: format!("[{}]", t.clone()),
+                                    replacement: t.clone() + " ",
+                                });
+                                pairs.push(Pair {
+                                    display: format!("[{}]", f.clone()),
+                                    replacement: f.clone() + " ",
+                                });
+                            } else {
+                                pairs.push(Pair {
+                                    display: t.clone(),
+                                    replacement: t.clone() + " ",
+                                });
+                                pairs.push(Pair {
+                                    display: f.clone(),
+                                    replacement: f.clone() + " ",
+                                });
                             }
                             rpos = pos;
                             break;

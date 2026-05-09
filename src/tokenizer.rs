@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 
-pub type TokenList = VecDeque<Token>;
+pub(crate) type TokenList = VecDeque<Token>;
 
 #[derive(Debug, PartialEq)]
-pub struct Token {
+pub(crate) struct Token {
     pub text: String,
     pub begin: usize,
     pub end: usize,
@@ -30,7 +30,7 @@ impl Token {
     }
 }
 
-pub fn tokenize(line: &str) -> Result<TokenList, ()> {
+pub(crate) fn tokenize(line: &str) -> Result<TokenList, ()> {
     enum Status {
         Idle,
         Token,
@@ -88,7 +88,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_simple() {
+    fn simple() {
         assert_eq!(tokenize("a"), Ok([Token::plain("a", 0, 1)].into()));
         assert_eq!(tokenize("abcde"), Ok([Token::plain("abcde", 0, 5)].into()));
         assert_eq!(
@@ -107,7 +107,7 @@ mod test {
     }
 
     #[test]
-    fn test_whitespace() {
+    fn whitespace() {
         assert_eq!(
             tokenize("    a    b    "),
             Ok([Token::plain("a", 4, 5), Token::plain("b", 9, 10)].into())
@@ -127,7 +127,7 @@ mod test {
     }
 
     #[test]
-    fn test_quoting() {
+    fn quoting() {
         assert_eq!(
             tokenize("say \"abcde fghij\""),
             Ok([
@@ -174,7 +174,7 @@ mod test {
     }
 
     #[test]
-    fn test_invalid() {
+    fn invalid() {
         assert_eq!(tokenize("abcde 'fghij"), Err(()));
         assert_eq!(tokenize("abcde' fghij"), Err(()));
         assert_eq!(tokenize("abcde'fghij "), Err(()));
