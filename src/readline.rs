@@ -1,12 +1,14 @@
-use crate::Selection;
-use crate::tokenizer;
-use crate::tokenizer::TokenList;
+use std::rc::Rc;
+
 use rustyline::completion::{Completer, Pair};
 use rustyline::config::Builder;
 use rustyline::error::ReadlineError;
 use rustyline::history::MemHistory;
 use rustyline::{CompletionType, Context, Editor, Helper, Highlighter, Hinter, Validator};
-use std::rc::Rc;
+
+use crate::Selection;
+use crate::tokenizer;
+use crate::tokenizer::TokenList;
 
 pub(crate) enum ReadError {
     InvalidInput,

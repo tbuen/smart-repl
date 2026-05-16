@@ -38,11 +38,11 @@ pub(crate) fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec
                 next,
             } => match tokens.pop_front() {
                 Some(token) => {
-                    args.add_string(name, Some(&token.text));
+                    args.add_string(name.to_owned(), Some(token.text));
                     sel = next;
                 }
                 None if *optional => {
-                    args.add_string(name, None);
+                    args.add_string(name.to_owned(), None);
                     sel = next;
                 }
                 None => result = ParseResult::MissingParameter,
@@ -54,15 +54,8 @@ pub(crate) fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec
                 next,
             } => match tokens.pop_front() {
                 Some(token) if !token.quoted => {
-                    let mut found = false;
-                    for v in values {
-                        if v == &token.text {
-                            args.add_alt(name, Some(v));
-                            found = true;
-                            break;
-                        }
-                    }
-                    if found {
+                    if values.iter().find(|s| *s == &token.text).is_some() {
+                        args.add_alt(name.to_owned(), Some(token.text));
                         sel = next;
                     } else {
                         result = ParseResult::InvalidParameter;
@@ -70,7 +63,7 @@ pub(crate) fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec
                 }
                 Some(_) => result = ParseResult::InvalidParameter,
                 None if *optional => {
-                    args.add_alt(name, None);
+                    args.add_alt(name.to_owned(), None);
                     sel = next;
                 }
                 None => result = ParseResult::MissingParameter,
@@ -78,15 +71,16 @@ pub(crate) fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec
             Selection::Bool {
                 name,
                 optional,
-                values: (t, f),
+                values,
                 next,
             } => match tokens.pop_front() {
                 Some(token) if !token.quoted => {
+                    let (t, f) = values;
                     if t == &token.text {
-                        args.add_bool(name, Some(true));
+                        args.add_bool(name.to_owned(), Some(true));
                         sel = next;
                     } else if f == &token.text {
-                        args.add_bool(name, Some(false));
+                        args.add_bool(name.to_owned(), Some(false));
                         sel = next;
                     } else {
                         result = ParseResult::InvalidParameter;
@@ -94,7 +88,7 @@ pub(crate) fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec
                 }
                 Some(_) => result = ParseResult::InvalidParameter,
                 None if *optional => {
-                    args.add_bool(name, None);
+                    args.add_bool(name.to_owned(), None);
                     sel = next;
                 }
                 None => result = ParseResult::MissingParameter,

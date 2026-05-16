@@ -1,31 +1,73 @@
-use colored::Colorize as _;
-use log::trace;
-use parser::ParseResult;
-use readline::{ReadError, Reader};
+mod parser;
+mod readline;
+mod tokenizer;
+
 use std::cmp;
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
-mod parser;
-mod readline;
-mod tokenizer;
+use colored::Colorize as _;
+use log::trace;
+
+use self::parser::ParseResult;
+use self::readline::{ReadError, Reader};
 
 pub const NAME: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("VERSION");
 
 const HELP_CMD: &str = "help";
 
-type CbMap<Ctx> = HashMap<Vec<String>, Callback<Ctx>>;
-
-struct HelpItem {
-    name: String,
-    help: Option<String>,
-    next: Option<HelpList>,
+pub struct Repl<'a, Ctx> {
+    ctx: Option<&'a Ctx>,
+    reader: Reader,
+    help: Option<HelpList>,
+    parse_tree: Rc<Selection>,
+    cb_map: CbMap<Ctx>,
 }
 
-enum HelpList {
-    GrpCmd(Vec<HelpItem>),
-    Param(Vec<HelpItem>),
+pub struct ReplBuilder<'a, Ctx> {
+    ctx: Option<&'a Ctx>,
+    prompt: String,
+    help: bool,
+    grps: Vec<Group<Ctx>>,
+    cmds: Vec<Command<Ctx>>,
+}
+
+pub struct Group<Ctx> {
+    name: String,
+    help: Option<String>,
+    grps: Vec<Group<Ctx>>,
+    cmds: Vec<Command<Ctx>>,
+}
+
+pub struct Command<Ctx> {
+    name: String,
+    help: Option<String>,
+    params: Vec<Parameter>,
+    cb: Callback<Ctx>,
+}
+
+pub struct Parameter {
+    ptype: ParamType,
+    name: String,
+    optional: bool,
+}
+
+pub struct Args {
+    strings: HashMap<String, Option<String>>,
+    alts: HashMap<String, Option<String>>,
+    bools: HashMap<String, Option<bool>>,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum ArgError {
+    NotAvailable,
+}
+
+enum ParamType {
+    String,
+    Alt(Vec<String>),
+    Bool(String, String),
 }
 
 enum Selection {
@@ -50,13 +92,19 @@ enum Selection {
     End,
 }
 
-pub struct Repl<'a, Ctx> {
-    ctx: Option<&'a Ctx>,
-    reader: Reader,
-    help: Option<HelpList>,
-    parse_tree: Rc<Selection>,
-    cb_map: CbMap<Ctx>,
+enum HelpList {
+    GrpCmd(Vec<HelpItem>),
+    Param(Vec<HelpItem>),
 }
+
+struct HelpItem {
+    name: String,
+    help: Option<String>,
+    next: Option<HelpList>,
+}
+
+type Callback<Ctx> = Box<dyn Fn(Option<&Ctx>, &Args)>;
+type CbMap<Ctx> = HashMap<Vec<String>, Callback<Ctx>>;
 
 impl<'a, Ctx> Repl<'a, Ctx> {
     pub fn builder() -> ReplBuilder<'a, Ctx> {
@@ -192,26 +240,8 @@ impl<'a, Ctx> Repl<'a, Ctx> {
     }
 }
 
-pub struct ReplBuilder<'a, Ctx> {
-    ctx: Option<&'a Ctx>,
-    prompt: String,
-    help: bool,
-    grps: Vec<Group<Ctx>>,
-    cmds: Vec<Command<Ctx>>,
-}
-
 impl<'a, Ctx> ReplBuilder<'a, Ctx> {
     const DEFAULT_PROMPT: &'static str = ">";
-
-    fn new() -> Self {
-        Self {
-            ctx: None,
-            prompt: ReplBuilder::<Ctx>::DEFAULT_PROMPT.into(),
-            help: false,
-            grps: Vec::new(),
-            cmds: Vec::new(),
-        }
-    }
 
     pub fn with_context(mut self, ctx: &'a Ctx) -> Self {
         self.ctx = Some(ctx);
@@ -236,6 +266,41 @@ impl<'a, Ctx> ReplBuilder<'a, Ctx> {
     pub fn with_command(mut self, cmd: Command<Ctx>) -> Self {
         self.cmds.push(cmd);
         self
+    }
+
+    pub fn build(self) -> Repl<'a, Ctx> {
+        let mut parse_tree;
+        let mut help = None;
+        let cb_map;
+        if self.help {
+            let (help_tree, help_items) = Self::build_help_tree(&self.grps, &self.cmds);
+            (parse_tree, cb_map) = Self::build_parse_tree(self.grps, self.cmds);
+            if let Selection::Fixed(ref mut fixed) = parse_tree {
+                fixed.push_front((HELP_CMD.into(), help_tree));
+            }
+            help = Some(help_items);
+        } else {
+            (parse_tree, cb_map) = Self::build_parse_tree(self.grps, self.cmds);
+        }
+
+        let rc_parse_tree = Rc::new(parse_tree);
+        Repl::<Ctx> {
+            ctx: self.ctx,
+            reader: Reader::new(&self.prompt, Rc::clone(&rc_parse_tree)),
+            help,
+            parse_tree: rc_parse_tree,
+            cb_map,
+        }
+    }
+
+    fn new() -> Self {
+        Self {
+            ctx: None,
+            prompt: Self::DEFAULT_PROMPT.into(),
+            help: false,
+            grps: Vec::new(),
+            cmds: Vec::new(),
+        }
     }
 
     fn build_help_tree(grps: &Vec<Group<Ctx>>, cmds: &Vec<Command<Ctx>>) -> (Selection, HelpList) {
@@ -353,38 +418,6 @@ impl<'a, Ctx> ReplBuilder<'a, Ctx> {
             (Selection::Fixed(fixed), cbs)
         }
     }
-
-    pub fn build(self) -> Repl<'a, Ctx> {
-        let mut parse_tree;
-        let mut help = None;
-        let cb_map;
-        if self.help {
-            let (help_tree, help_items) = Self::build_help_tree(&self.grps, &self.cmds);
-            (parse_tree, cb_map) = Self::build_parse_tree(self.grps, self.cmds);
-            if let Selection::Fixed(ref mut fixed) = parse_tree {
-                fixed.push_front((HELP_CMD.into(), help_tree));
-            }
-            help = Some(help_items);
-        } else {
-            (parse_tree, cb_map) = Self::build_parse_tree(self.grps, self.cmds);
-        }
-
-        let rc_parse_tree = Rc::new(parse_tree);
-        Repl::<Ctx> {
-            ctx: self.ctx,
-            reader: Reader::new(&self.prompt, Rc::clone(&rc_parse_tree)),
-            help,
-            parse_tree: rc_parse_tree,
-            cb_map,
-        }
-    }
-}
-
-pub struct Group<Ctx> {
-    name: String,
-    help: Option<String>,
-    grps: Vec<Group<Ctx>>,
-    cmds: Vec<Command<Ctx>>,
 }
 
 impl<Ctx> Group<Ctx> {
@@ -411,15 +444,6 @@ impl<Ctx> Group<Ctx> {
         self.cmds.push(cmd);
         self
     }
-}
-
-type Callback<Ctx> = Box<dyn Fn(Option<&Ctx>, &Args)>;
-
-pub struct Command<Ctx> {
-    name: String,
-    help: Option<String>,
-    params: Vec<Parameter>,
-    cb: Callback<Ctx>,
 }
 
 impl<Ctx> Command<Ctx> {
@@ -458,18 +482,6 @@ impl<Ctx> Command<Ctx> {
     }
 }
 
-enum ParamType {
-    String,
-    Alt(Vec<String>),
-    Bool(String, String),
-}
-
-pub struct Parameter {
-    ptype: ParamType,
-    name: String,
-    optional: bool,
-}
-
 impl Parameter {
     pub fn string(name: &str) -> Self {
         Self {
@@ -496,48 +508,23 @@ impl Parameter {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum ArgError {
-    NotAvailable,
-}
-
-pub struct Args {
-    strings: HashMap<String, Option<String>>,
-    alts: HashMap<String, Option<String>>,
-    bools: HashMap<String, Option<bool>>,
-}
-
 impl Args {
-    fn new() -> Self {
-        Args {
-            strings: HashMap::new(),
-            alts: HashMap::new(),
-            bools: HashMap::new(),
-        }
-    }
-
-    fn add_string(&mut self, name: &str, val: Option<&str>) {
-        self.strings.insert(name.into(), val.map(Into::into));
-    }
-
-    fn add_alt(&mut self, name: &str, val: Option<&str>) {
-        self.alts.insert(name.into(), val.map(Into::into));
-    }
-
-    fn add_bool(&mut self, name: &str, val: Option<bool>) {
-        self.bools.insert(name.into(), val);
-    }
-
-    pub fn get_string(&self, name: &str) -> Result<Option<String>, ArgError> {
+    pub fn get_string(&self, name: &str) -> Result<Option<&str>, ArgError> {
         match self.strings.get(name) {
-            Some(o) => Ok(o.clone()),
+            Some(o) => match o {
+                Some(s) => Ok(Some(s.as_str())),
+                None => Ok(None),
+            },
             None => Err(ArgError::NotAvailable),
         }
     }
 
-    pub fn get_alt(&self, name: &str) -> Result<Option<String>, ArgError> {
+    pub fn get_alt(&self, name: &str) -> Result<Option<&str>, ArgError> {
         match self.alts.get(name) {
-            Some(o) => Ok(o.clone()),
+            Some(o) => match o {
+                Some(s) => Ok(Some(s.as_str())),
+                None => Ok(None),
+            },
             None => Err(ArgError::NotAvailable),
         }
     }
@@ -547,5 +534,25 @@ impl Args {
             Some(o) => Ok(*o),
             None => Err(ArgError::NotAvailable),
         }
+    }
+
+    fn new() -> Self {
+        Args {
+            strings: HashMap::new(),
+            alts: HashMap::new(),
+            bools: HashMap::new(),
+        }
+    }
+
+    fn add_string(&mut self, name: String, val: Option<String>) {
+        self.strings.insert(name, val);
+    }
+
+    fn add_alt(&mut self, name: String, val: Option<String>) {
+        self.alts.insert(name, val);
+    }
+
+    fn add_bool(&mut self, name: String, val: Option<bool>) {
+        self.bools.insert(name, val);
     }
 }
