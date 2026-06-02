@@ -103,7 +103,7 @@ struct HelpItem {
     next: Option<HelpList>,
 }
 
-type Callback<Ctx> = Box<dyn Fn(Option<&Ctx>, &Args)>;
+type Callback<Ctx> = Box<dyn Fn(Option<&Ctx>, Args)>;
 type CbMap<Ctx> = HashMap<Vec<String>, Callback<Ctx>>;
 
 impl<'a, Ctx> Repl<'a, Ctx> {
@@ -132,7 +132,7 @@ impl<'a, Ctx> Repl<'a, Ctx> {
                         match result {
                             ParseResult::Success => {
                                 if let Some(cb) = self.cb_map.get(&cmds) {
-                                    (cb)(self.ctx, &args);
+                                    (cb)(self.ctx, args);
                                 }
                             }
                             ParseResult::MissingCommand => {
@@ -243,26 +243,31 @@ impl<'a, Ctx> Repl<'a, Ctx> {
 impl<'a, Ctx> ReplBuilder<'a, Ctx> {
     const DEFAULT_PROMPT: &'static str = ">";
 
+    #[must_use]
     pub fn with_context(mut self, ctx: &'a Ctx) -> Self {
         self.ctx = Some(ctx);
         self
     }
 
+    #[must_use]
     pub fn with_prompt(mut self, prompt: &str) -> Self {
         self.prompt = prompt.into();
         self
     }
 
+    #[must_use]
     pub fn with_help(mut self) -> Self {
         self.help = true;
         self
     }
 
+    #[must_use]
     pub fn with_group(mut self, grp: Group<Ctx>) -> Self {
         self.grps.push(grp);
         self
     }
 
+    #[must_use]
     pub fn with_command(mut self, cmd: Command<Ctx>) -> Self {
         self.cmds.push(cmd);
         self
@@ -430,16 +435,19 @@ impl<Ctx> Group<Ctx> {
         }
     }
 
+    #[must_use]
     pub fn with_help(mut self, text: &str) -> Self {
         self.help = Some(text.into());
         self
     }
 
+    #[must_use]
     pub fn with_group(mut self, grp: Group<Ctx>) -> Self {
         self.grps.push(grp);
         self
     }
 
+    #[must_use]
     pub fn with_command(mut self, cmd: Command<Ctx>) -> Self {
         self.cmds.push(cmd);
         self
@@ -449,7 +457,7 @@ impl<Ctx> Group<Ctx> {
 impl<Ctx> Command<Ctx> {
     pub fn new<Cb>(name: &str, cb: Cb) -> Self
     where
-        Cb: Fn(Option<&Ctx>, &Args) + 'static,
+        Cb: Fn(Option<&Ctx>, Args) + 'static,
     {
         Self {
             name: name.into(),
@@ -459,11 +467,13 @@ impl<Ctx> Command<Ctx> {
         }
     }
 
+    #[must_use]
     pub fn with_help(mut self, text: &str) -> Self {
         self.help = Some(text.into());
         self
     }
 
+    #[must_use]
     pub fn with_parameter(mut self, param: Parameter) -> Self {
         if let Some(p) = self.params.last()
             && p.optional
@@ -474,6 +484,7 @@ impl<Ctx> Command<Ctx> {
         self
     }
 
+    #[must_use]
     pub fn with_optional_parameter(mut self, param: Parameter) -> Self {
         let mut p = param;
         p.optional = true;
@@ -509,10 +520,10 @@ impl Parameter {
 }
 
 impl Args {
-    pub fn get_string(&self, name: &str) -> Result<Option<&str>, ArgError> {
-        match self.strings.get(name) {
+    pub fn get_string(&mut self, name: &str) -> Result<Option<String>, ArgError> {
+        match self.strings.remove(name) {
             Some(o) => match o {
-                Some(s) => Ok(Some(s.as_str())),
+                Some(s) => Ok(Some(s)),
                 None => Ok(None),
             },
             None => Err(ArgError::NotAvailable),
