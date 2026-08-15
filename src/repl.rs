@@ -125,18 +125,6 @@ impl<'a, Ctx> Repl<'a, Ctx> {
                         }
                     }
                 }
-                /*
-                match self.rl.helper().unwrap().parse(&line) {
-                    Ok(res) => {
-                        if self.interpret(res) {
-                            match self.rl.add_history_entry(line) {
-                                Ok(b) => println!("history: {b}"),
-                                Err(e) => println!("{:?}", e),
-                            }
-                        }
-                    }
-                    Err(_) => println!("## invalid input"),
-                },*/
                 e @ Err(readline::Error::Readline(_)) => {
                     println!("{}", e.unwrap_err().to_string().bold());
                     break;

@@ -39,7 +39,10 @@ impl Reader {
 
     pub(crate) fn read_line(&mut self) -> Result<TokenList, Error> {
         match self.rusty.readline(&self.prompt) {
-            Ok(line) => tokenizer::tokenize(&line).map_err(Into::into),
+            Ok(line) => {
+                self.rusty.add_history_entry(&line).unwrap();
+                tokenizer::tokenize(&line).map_err(Into::into)
+            }
             Err(e) => Err(e.into()),
         }
     }
