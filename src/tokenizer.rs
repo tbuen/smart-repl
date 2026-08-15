@@ -1,4 +1,12 @@
 use std::collections::VecDeque;
+use std::error;
+use std::fmt;
+
+#[derive(Debug, Clone)]
+pub(crate) enum Error {
+    InvalidString,
+    UnterminatedString,
+}
 
 pub(crate) type TokenList = VecDeque<Token>;
 
@@ -30,7 +38,7 @@ impl Token {
     }
 }
 
-pub(crate) fn tokenize(line: &str) -> Result<TokenList, ()> {
+pub(crate) fn tokenize(line: &str) -> Result<TokenList, Error> {
     enum Status {
         Idle,
         Token,
@@ -55,7 +63,7 @@ pub(crate) fn tokenize(line: &str) -> Result<TokenList, ()> {
             }
             Status::Token => {
                 if c == '"' || c == '\'' {
-                    return Err(());
+                    return Err(Error::InvalidString);
                 } else if c == ' ' {
                     tokens.push_back(Token::plain(&token, begin, i));
                     token.clear();
@@ -77,10 +85,21 @@ pub(crate) fn tokenize(line: &str) -> Result<TokenList, ()> {
     }
     match status {
         Status::Token => tokens.push_back(Token::plain(&token, begin, line.chars().count())),
-        Status::Quote(_) => return Err(()),
+        Status::Quote(_) => return Err(Error::UnterminatedString),
         Status::Idle => {}
     }
     Ok(tokens)
+}
+
+impl error::Error for Error {}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::InvalidString => write!(f, "invalid begin of string"),
+            Error::UnterminatedString => write!(f, "unterminated string"),
+        }
+    }
 }
 
 #[cfg(test)]

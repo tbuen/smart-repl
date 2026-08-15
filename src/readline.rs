@@ -1,3 +1,5 @@
+use std::error;
+use std::fmt;
 use std::rc::Rc;
 
 use rustyline::completion::{Completer, Pair};
@@ -6,15 +8,16 @@ use rustyline::error::ReadlineError;
 use rustyline::history::MemHistory;
 use rustyline::{CompletionType, Context, Editor, Helper, Highlighter, Hinter, Validator};
 
-use crate::Selection;
+use crate::repl::Selection;
 use crate::tokenizer;
 use crate::tokenizer::TokenList;
 
-pub(crate) enum ReadError {
-    InvalidInput,
+#[derive(Debug, Clone)]
+pub(crate) enum Error {
     Eof,
     Interrupted,
-    Io(String),
+    Readline(String),
+    Tokenizer(tokenizer::Error),
 }
 
 pub(crate) struct Reader {
@@ -34,15 +37,10 @@ impl Reader {
         }
     }
 
-    pub(crate) fn read_line(&mut self) -> Result<TokenList, ReadError> {
+    pub(crate) fn read_line(&mut self) -> Result<TokenList, Error> {
         match self.rusty.readline(&self.prompt) {
-            Ok(line) => match tokenizer::tokenize(&line) {
-                Ok(list) => Ok(list),
-                Err(()) => Err(ReadError::InvalidInput),
-            },
-            Err(ReadlineError::Interrupted) => Err(ReadError::Interrupted),
-            Err(ReadlineError::Eof) => Err(ReadError::Eof),
-            Err(err) => Err(ReadError::Io(err.to_string())),
+            Ok(line) => tokenizer::tokenize(&line).map_err(Into::into),
+            Err(e) => Err(e.into()),
         }
     }
 }
@@ -249,5 +247,37 @@ impl Completer for MyHelper {
             }
         }
         Ok((rpos, pairs))
+    }
+}
+
+impl error::Error for Error {}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Eof => write!(f, "end of file"),
+            Error::Interrupted => write!(f, "interrupted"),
+            Error::Readline(s) => write!(f, "readline: {s}"),
+            Error::Tokenizer(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl From<ReadlineError> for Error {
+    fn from(value: ReadlineError) -> Self {
+        match value {
+            ReadlineError::Eof => Error::Eof,
+            ReadlineError::Interrupted => Error::Interrupted,
+            ReadlineError::Io(e) => Error::Readline(e.to_string()),
+            ReadlineError::Errno(e) => Error::Readline(e.to_string()),
+            ReadlineError::Signal(s) => Error::Readline(format!("{s:?}")),
+            _ => Error::Readline(String::from("unknown")),
+        }
+    }
+}
+
+impl From<tokenizer::Error> for Error {
+    fn from(value: tokenizer::Error) -> Self {
+        Error::Tokenizer(value)
     }
 }

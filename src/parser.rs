@@ -1,10 +1,12 @@
-use crate::Args;
-use crate::Selection;
+use std::error;
+use std::fmt;
+
+use crate::args::Args;
+use crate::repl::Selection;
 use crate::tokenizer::TokenList;
 
-#[derive(Debug)]
-pub(crate) enum ParseResult {
-    Success,
+#[derive(Debug, Clone)]
+pub(crate) enum Error {
     MissingCommand,
     InvalidCommand,
     MissingParameter,
@@ -12,13 +14,21 @@ pub(crate) enum ParseResult {
     ExtraToken,
 }
 
-pub(crate) fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec<String>, Args) {
+#[derive(Debug, Default)]
+pub(crate) struct ParseConfig {
+    accept_missing_command: bool,
+}
+
+pub(crate) fn parse(
+    cfg: &ParseConfig,
+    sel: &Selection,
+    mut tokens: TokenList,
+) -> Result<(Vec<String>, Args), Error> {
     let mut sel = sel;
-    let mut result = ParseResult::Success;
     let mut commands = Vec::new();
     let mut args = Args::new();
 
-    while matches!(result, ParseResult::Success) {
+    loop {
         match sel {
             Selection::Fixed(fixed) => match tokens.pop_front() {
                 Some(token) if !token.quoted => {
@@ -26,11 +36,12 @@ pub(crate) fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec
                         commands.push(token.text);
                         sel = s;
                     } else {
-                        result = ParseResult::InvalidCommand;
+                        return Err(Error::InvalidCommand);
                     }
                 }
-                Some(_) => result = ParseResult::InvalidCommand,
-                None => result = ParseResult::MissingCommand,
+                Some(_) => return Err(Error::InvalidCommand),
+                None if cfg.accept_missing_command => break,
+                None => return Err(Error::MissingCommand),
             },
             Selection::String {
                 name,
@@ -45,7 +56,7 @@ pub(crate) fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec
                     args.add_string(name.to_owned(), None);
                     sel = next;
                 }
-                None => result = ParseResult::MissingParameter,
+                None => return Err(Error::MissingParameter),
             },
             Selection::Alt {
                 name,
@@ -58,15 +69,15 @@ pub(crate) fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec
                         args.add_alt(name.to_owned(), Some(token.text));
                         sel = next;
                     } else {
-                        result = ParseResult::InvalidParameter;
+                        return Err(Error::InvalidParameter);
                     }
                 }
-                Some(_) => result = ParseResult::InvalidParameter,
+                Some(_) => return Err(Error::InvalidParameter),
                 None if *optional => {
                     args.add_alt(name.to_owned(), None);
                     sel = next;
                 }
-                None => result = ParseResult::MissingParameter,
+                None => return Err(Error::MissingParameter),
             },
             Selection::Bool {
                 name,
@@ -83,23 +94,45 @@ pub(crate) fn parse(sel: &Selection, mut tokens: TokenList) -> (ParseResult, Vec
                         args.add_bool(name.to_owned(), Some(false));
                         sel = next;
                     } else {
-                        result = ParseResult::InvalidParameter;
+                        return Err(Error::InvalidParameter);
                     }
                 }
-                Some(_) => result = ParseResult::InvalidParameter,
+                Some(_) => return Err(Error::InvalidParameter),
                 None if *optional => {
                     args.add_bool(name.to_owned(), None);
                     sel = next;
                 }
-                None => result = ParseResult::MissingParameter,
+                None => return Err(Error::MissingParameter),
             },
             Selection::End => {
                 if tokens.is_empty() {
                     break;
                 }
-                result = ParseResult::ExtraToken;
+                return Err(Error::ExtraToken);
             }
         }
     }
-    (result, commands, args)
+    Ok((commands, args))
+}
+
+impl error::Error for Error {}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::MissingCommand => write!(f, "missing command"),
+            Error::InvalidCommand => write!(f, "invalid command"),
+            Error::MissingParameter => write!(f, "missing parameter"),
+            Error::InvalidParameter => write!(f, "invalid parameter"),
+            Error::ExtraToken => write!(f, "too many parameters"),
+        }
+    }
+}
+
+impl ParseConfig {
+    pub(crate) fn for_help() -> Self {
+        Self {
+            accept_missing_command: true,
+        }
+    }
 }
