@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::error;
 use std::fmt;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Error {
     InvalidString,
     UnterminatedString,
@@ -194,9 +194,10 @@ mod test {
 
     #[test]
     fn invalid() {
-        assert_eq!(tokenize("abcde 'fghij"), Err(()));
-        assert_eq!(tokenize("abcde' fghij"), Err(()));
-        assert_eq!(tokenize("abcde'fghij "), Err(()));
-        assert_eq!(tokenize("abcde'fghij\""), Err(()));
+        assert_eq!(tokenize("abcde 'fghij"), Err(Error::UnterminatedString));
+        assert_eq!(tokenize("abcde' fghij"), Err(Error::InvalidString));
+        assert_eq!(tokenize("abcde'fghij "), Err(Error::InvalidString));
+        assert_eq!(tokenize("abcde'fghij\""), Err(Error::InvalidString));
+        assert_eq!(tokenize("abcde 'fghij\""), Err(Error::UnterminatedString));
     }
 }
