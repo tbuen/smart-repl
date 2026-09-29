@@ -104,6 +104,25 @@ pub(crate) fn parse(
                 }
                 None => return Err(Error::MissingParameter),
             },
+            Selection::Int {
+                name,
+                optional,
+                next,
+            } => match tokens.pop_front() {
+                Some(token) => {
+                    if let Ok(n) = token.text.parse() {
+                        args.add_int(name.to_owned(), Some(n));
+                        sel = next;
+                    } else {
+                        return Err(Error::InvalidParameter);
+                    }
+                }
+                None if *optional => {
+                    args.add_int(name.to_owned(), None);
+                    sel = next;
+                }
+                None => return Err(Error::MissingParameter),
+            },
             Selection::End => {
                 if tokens.is_empty() {
                     break;

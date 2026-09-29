@@ -69,6 +69,11 @@ pub(crate) enum Selection {
         values: (String, String),
         next: Box<Selection>,
     },
+    Int {
+        name: String,
+        optional: bool,
+        next: Box<Selection>,
+    },
     End,
 }
 
@@ -76,6 +81,7 @@ enum ParamType {
     String,
     Alt(Vec<String>),
     Bool(String, String),
+    Int,
 }
 
 enum HelpList {
@@ -292,6 +298,13 @@ impl<'a, Ctx> ReplBuilder<'a, Ctx> {
                                 format!("{t}|{f}")
                             }
                         }
+                        ParamType::Int => {
+                            if p.optional {
+                                format!("[#{}]", p.name)
+                            } else {
+                                format!("#{}", p.name)
+                            }
+                        }
                     };
                     HelpItem {
                         name,
@@ -360,6 +373,15 @@ impl<'a, Ctx> ReplBuilder<'a, Ctx> {
                         name,
                         optional,
                         values: (t, f),
+                        next: Box::new(s),
+                    },
+                    Parameter {
+                        ptype: ParamType::Int,
+                        name,
+                        optional,
+                    } => Selection::Int {
+                        name,
+                        optional,
                         next: Box::new(s),
                     },
                 };
@@ -473,6 +495,14 @@ impl Parameter {
     pub fn bool(name: &str, true_name: &str, false_name: &str) -> Self {
         Self {
             ptype: ParamType::Bool(true_name.into(), false_name.into()),
+            name: name.into(),
+            optional: false,
+        }
+    }
+
+    pub fn int(name: &str) -> Self {
+        Self {
+            ptype: ParamType::Int,
             name: name.into(),
             optional: false,
         }

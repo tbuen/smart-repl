@@ -6,6 +6,7 @@ pub struct Args {
     strings: HashMap<String, Option<String>>,
     alts: HashMap<String, Option<String>>,
     bools: HashMap<String, Option<bool>>,
+    ints: HashMap<String, Option<i32>>,
 }
 
 impl Args {
@@ -36,11 +37,19 @@ impl Args {
         }
     }
 
+    pub fn get_int(&self, name: &str) -> Result<Option<i32>> {
+        match self.ints.get(name) {
+            Some(o) => Ok(*o),
+            None => Err(Error::ArgNotAvailable),
+        }
+    }
+
     pub(crate) fn new() -> Self {
         Args {
             strings: HashMap::new(),
             alts: HashMap::new(),
             bools: HashMap::new(),
+            ints: HashMap::new(),
         }
     }
 
@@ -54,5 +63,9 @@ impl Args {
 
     pub(crate) fn add_bool(&mut self, name: String, val: Option<bool>) {
         self.bools.insert(name, val);
+    }
+
+    pub(crate) fn add_int(&mut self, name: String, val: Option<i32>) {
+        self.ints.insert(name, val);
     }
 }

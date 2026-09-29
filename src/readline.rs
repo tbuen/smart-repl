@@ -245,6 +245,31 @@ impl Completer for MyHelper {
                             break;
                         }
                     },
+                    Selection::Int {
+                        name,
+                        optional,
+                        next,
+                    } => match tokens.pop_front() {
+                        Some(token) if line.len() > token.end => {
+                            sel = next;
+                        }
+                        Some(_) => break,
+                        None => {
+                            if *optional {
+                                pairs.push(Pair {
+                                    display: format!("[#{name}]"),
+                                    replacement: format!("[#{name}] "),
+                                });
+                            } else {
+                                pairs.push(Pair {
+                                    display: format!("#{name}"),
+                                    replacement: format!("#{name} "),
+                                });
+                            }
+                            rpos = pos;
+                            break;
+                        }
+                    },
                     Selection::End => break,
                 }
             }
